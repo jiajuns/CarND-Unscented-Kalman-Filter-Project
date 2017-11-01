@@ -51,6 +51,27 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
+
+  is_initialized_ = false;
+
+  //set state dimension
+  n_x_ = 5;
+
+  //define spreading parameter
+  lambda_ = 3 - n_x_;
+
+  //set augmented dimension
+  n_aug_ = 7;
+
+  //initialize covariance matrix
+  P_ << 1, 0, 0, 0, 0,
+        0, 1, 0, 0, 0,
+        0, 0, 1, 0, 0,
+        0, 0, 0, 1, 0,
+        0, 0, 0, 0, 1;
+
+  Xsig_pred_ = MatrixXd(n_aug_, 2 * n_aug_ + 1);
+
 }
 
 UKF::~UKF() {}
@@ -62,10 +83,36 @@ UKF::~UKF() {}
 void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   /**
   TODO:
-
   Complete this function! Make sure you switch between lidar and radar
   measurements.
   */
+  if (!is_initialized_) {
+    if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+      /**
+      Convert radar from polar to cartesian coordinates and initialize state.
+      */
+      float rho = meas_package.raw_measurements_(0);
+      float phi = meas_package.raw_measurements_(1);
+      float rho_dot = meas_package.raw_measurements_(2);
+
+      x_(0) = rho * cos(phi);
+      x_(1) = rho * sin(phi);
+      x_(2) = rho_dot * cos(phi);
+      x_(3) = rho_dot * sin(phi);
+    }
+    else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+      /**
+      Initialize state.
+      */
+      x_(0) = meas_package.raw_measurements_(0);
+      x_(1) = meas_package.raw_measurements_(1);
+    }
+
+    // done initializing, no need to predict or update
+    is_initialized_ = true;
+    return;
+  }
+
 }
 
 /**
