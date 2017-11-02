@@ -67,6 +67,11 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
+  ///* Radar measurement noise matrix
+  MatrixXd R_radar_;
+
+  ///* Lidar measurement noise matrix
+  MatrixXd R_lidar_;
 
   /**
    * Constructor
@@ -77,6 +82,13 @@ public:
    * Destructor
    */
   virtual ~UKF();
+
+
+  /**
+   * Normalise angle
+   */
+  void UKF::NormAng(double *ang);
+
 
   /**
    * ProcessMeasurement

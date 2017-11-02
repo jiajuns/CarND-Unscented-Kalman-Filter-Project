@@ -63,6 +63,13 @@ UKF::UKF() {
   //set augmented dimension
   n_aug_ = 7;
 
+  VectorXd weights_ = VectorXd(2 * n_aug_ + 1);
+  weights_(0) = lambda_/(lambda_ + n_aug_);
+  for (int i=1; i<2*n_aug_+1; i++) {
+    double weight = 0.5/(n_aug_ + lambda_);
+    weights_(i) = weight;
+  }
+
   //initialize covariance matrix
   P_ << 1, 0, 0, 0, 0,
         0, 1, 0, 0, 0,
@@ -72,9 +79,29 @@ UKF::UKF() {
 
   Xsig_pred_ = MatrixXd(n_aug_, 2 * n_aug_ + 1);
 
+  //initialize state matrix
+  x_ << 0, 0, 0, 0, 0;
+
+  //radar measurement noise matrix
+  R_radar_ << pow(std_radr_, 2), 0, 0,
+              0, pow(std_radphi_, 2), 0,
+              0, 0, pow(std_radrd_, 2);
+
+  //lidar measurement noise matrix
+  R_lidar_ << pow(std_laspx_, 2), 0,
+              0, pow(std_laspy_, 2);
 }
 
 UKF::~UKF() {}
+
+/**
+ * normalise angle to range [-pi, pi]
+ */
+
+void UKF::NormAng(double *ang) {
+  while (*ang > M_PI) *ang -= 2. * M_PI;
+  while (*ang < -M_PI) *ang += 2. * M_PI;
+}
 
 /**
  * @param {MeasurementPackage} meas_package The latest measurement data of
@@ -112,7 +139,20 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     is_initialized_ = true;
     return;
   }
+  else {
+    double delta_t = meas_package.timestamp_ - time_us_;
+    delta_t /= 1000000.0;
 
+    Prediction(delta_t);
+
+    if (meas_package.sensor_type_ == MeasurementPackage::RADAR){
+      UpdateRadar(meas_package);
+    }
+    else if (meas_package.sensor_type_ == MeasurementPackage::LASER){
+      UpdateLidar(meas_package);
+    }
+  }
+  time_us_ = meas_package.timestamp_;
 }
 
 /**
@@ -142,6 +182,25 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the lidar NIS.
   */
+  int n_z_ = 3;
+  VectorXd z = VectorXd(n_z_);
+  z(0) = meas_package.raw_measurements_(0);
+  z(1) = meas_package.raw_measurements_(1);
+  z(2) = meas_package.raw_measurements_(2);
+
+  MatrixXd Tc = MatrixXd(n_x_, n_z_);
+  VectorXd z_pred_ = VectorXd(n_z_);
+
+  for (int i=0; i<2*n_aug_+1; i++){
+    Tc += weights_(i)*(Xsig_pred_.col(i) - x_)*(Zsig.col(i) - z_pred_).transpose();
+  }
+
+  //calculate Kalman gain K;
+  MatrixXd K = Tc * S.inverse();
+
+  //update state mean and covariance matrix
+  x_ += K * (z - z_pred_);
+  P_ -= K * S * K.transpose();
 }
 
 /**
@@ -157,4 +216,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the radar NIS.
   */
+
+
+
+
 }
