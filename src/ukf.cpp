@@ -167,13 +167,69 @@ void UKF::Prediction(double delta_t) {
   Complete this function! Estimate the object's location. Modify the state
   vector, x_. Predict sigma points, the state, and the state covariance matrix.
   */
+  //create augmented mean vector
+  VectorXd x_aug = VectorXd(7);
+
+  //create augmented state covariance
+  MatrixXd P_aug = MatrixXd(7, 7);
+
+  //create sigma point matrix
+  MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
+
+  //create augmented mean state
+  x_aug.head(5) = x_;
+  x_aug(5) = 0;
+  x_aug(6) = 0;
+
+  //create augmented covariance matrix
+  P_aug.fill(0.0);
+  P_aug.topLeftCorner(5,5) = P_;
+  P_aug(5,5) = std_a_ * std_a_;
+  P_aug(6,6) = std_yawdd_ * std_yawdd_;
+
+  //create square root matrix
+  MatrixXd L = P_aug.llt().matrixL();
+
+  //create augmented sigma points
+  Xsig_aug.col(0)  = x_aug;
+  for (int i = 0; i< n_aug_; i++)
+  {
+    Xsig_aug.col(i+1)       = x_aug + sqrt(lambda_+n_aug_) * L.col(i);
+    Xsig_aug.col(i+1+n_aug_) = x_aug - sqrt(lambda_+n_aug_) * L.col(i);
+  }
+
+  for (int i=0; i<2*n_aug_+1; i++){
+    double px = Xsig_aug(0, i);
+    double py = Xsig_aug(1, i);
+    double v = Xsig_aug(2, i);
+    double psi = Xsig_aug(3, i);
+    double psi_dot = Xsig_aug(4, i);
+    double mu_a = Xsig_aug(5, i);
+    double mu_psi = Xsig_aug(6, i);
+
+    if (fabs(psi_dot) < 0.0001){
+      px += v * cos(psi) * delta_t;
+      py += v * sin(psi) * delta_t;
+    } else {
+      px += v / psi_dot * (sin(psi + psi_dot*delta_t) - sin(psi));
+      py += v / psi_dot * (-cos(psi + psi_dot*delta_t) + cos(psi));
+    }
+
+    px += 0.5 * pow(delta_t, 2) * cos(psi) * mu_a;
+    py += 0.5 * pow(delta_t, 2) * sin(psi) * mu_a;
+    v += delta_t * mu_a;
+    psi += psi_dot * delta_t + 0.5 * pow(delta_t, 2) * mu_psi;
+    psi_dot += delta_t * mu_psi;
+
+    Xsig_pred_.col(i) << px, py, v, psi, psi_dot;
+  }
 }
 
 /**
  * Updates the state and the state covariance matrix using a laser measurement.
  * @param {MeasurementPackage} meas_package
  */
-void UKF::UpdateLidar(MeasurementPackage meas_package) {
+void UKF::UpdateLidar(MeasurementPackage meas_package){
   /**
   TODO:
 
@@ -182,14 +238,52 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the lidar NIS.
   */
-  int n_z_ = 3;
-  VectorXd z = VectorXd(n_z_);
+  int n_z = 3;
+  MatrixXd S = MatrixXd(n_z, n_z);
+
+  MatrixXd R = MatrixXd(3, 3);
+  R << pow(std_radr_, 2), 0, 0,
+       0, pow(std_radphi_, 2), 0,
+       0, 0, pow(std_radrd_, 2);
+
+  //create matrix for sigma points in measurement space
+  MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
+
+  for (int i=0; i<2*n_aug_+1; i++){
+    double px = Xsig_pred_(0, i);
+    double py = Xsig_pred_(1, i);
+    double nu = Xsig_pred_(2, i);
+    double psi = Xsig_pred_(3, i);
+
+    double rho = sqrt(pow(px, 2) + pow(py, 2));
+    double phi = atan2(py, px);
+    double rho_dot = (px*cos(psi)*nu + py*sin(psi)*nu)/rho;
+
+    Zsig.col(i) << rho, phi, rho_dot;
+  }
+
+  //mean predicted measurement
+  VectorXd z_pred = VectorXd(n_z);
+
+  //calculate mean predicted measurement
+  for (int i=0; i<2*n_aug_+1; i++){
+    z_pred += weights_(i)*Zsig.col(i);
+  }
+
+
+  //calculate measurement covariance matrix S
+  for (int i=0; i<2*n_aug_+1; i++){
+      S += weights_(i)*(Zsig.col(i) - z_pred)*(Zsig.col(i) - z_pred).transpose();
+  }
+  S += R;
+
+  VectorXd z = VectorXd(n_z);
   z(0) = meas_package.raw_measurements_(0);
   z(1) = meas_package.raw_measurements_(1);
   z(2) = meas_package.raw_measurements_(2);
 
-  MatrixXd Tc = MatrixXd(n_x_, n_z_);
-  VectorXd z_pred_ = VectorXd(n_z_);
+  MatrixXd Tc = MatrixXd(n_x_, n_z);
+  VectorXd z_pred_ = VectorXd(n_z);
 
   for (int i=0; i<2*n_aug_+1; i++){
     Tc += weights_(i)*(Xsig_pred_.col(i) - x_)*(Zsig.col(i) - z_pred_).transpose();

@@ -87,7 +87,7 @@ public:
   /**
    * Normalise angle
    */
-  void UKF::NormAng(double *ang);
+  void NormAng(double *ang);
 
 
   /**
