@@ -226,18 +226,19 @@ void UKF::Prediction(double delta_t) {
 }
 
 /**
- * Updates the state and the state covariance matrix using a laser measurement.
+ * Updates the state and the state covariance matrix using a radar measurement.
  * @param {MeasurementPackage} meas_package
  */
-void UKF::UpdateLidar(MeasurementPackage meas_package){
+void UKF::UpdateRadar(MeasurementPackage meas_package) {
   /**
   TODO:
 
-  Complete this function! Use lidar data to update the belief about the object's
+  Complete this function! Use radar data to update the belief about the object's
   position. Modify the state vector, x_, and covariance, P_.
 
-  You'll also need to calculate the lidar NIS.
+  You'll also need to calculate the radar NIS.
   */
+
   int n_z = 3;
   MatrixXd S = MatrixXd(n_z, n_z);
 
@@ -270,7 +271,6 @@ void UKF::UpdateLidar(MeasurementPackage meas_package){
     z_pred += weights_(i)*Zsig.col(i);
   }
 
-
   //calculate measurement covariance matrix S
   for (int i=0; i<2*n_aug_+1; i++){
       S += weights_(i)*(Zsig.col(i) - z_pred)*(Zsig.col(i) - z_pred).transpose();
@@ -301,17 +301,62 @@ void UKF::UpdateLidar(MeasurementPackage meas_package){
  * Updates the state and the state covariance matrix using a radar measurement.
  * @param {MeasurementPackage} meas_package
  */
-void UKF::UpdateRadar(MeasurementPackage meas_package) {
+void UKF::UpdateLidar(MeasurementPackage meas_package){
   /**
   TODO:
 
-  Complete this function! Use radar data to update the belief about the object's
+  Complete this function! Use lidar data to update the belief about the object's
   position. Modify the state vector, x_, and covariance, P_.
 
-  You'll also need to calculate the radar NIS.
+  You'll also need to calculate the lidar NIS.
   */
 
+  int n_z = 2;
+  MatrixXd S = MatrixXd(n_z, n_z);
 
+  MatrixXd R = MatrixXd(n_z, n_z);
+  R << pow(std_laspx_, 2), 0,
+       0, pow(std_laspx_, 2);
 
+  //create matrix for sigma points in measurement space
+  MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
 
+  for (int i=0; i<2*n_aug_+1; i++){
+    double px = Xsig_pred_(0, i);
+    double py = Xsig_pred_(1, i);
+
+    Zsig.col(i) << px, py;
+  }
+
+  //mean predicted measurement
+  VectorXd z_pred = VectorXd(n_z);
+
+  //calculate mean predicted measurement
+  for (int i=0; i<2*n_aug_+1; i++){
+    z_pred += weights_(i)*Zsig.col(i);
+  }
+
+  //calculate measurement covariance matrix S
+  for (int i=0; i<2*n_aug_+1; i++){
+      S += weights_(i)*(Zsig.col(i) - z_pred)*(Zsig.col(i) - z_pred).transpose();
+  }
+  S += R;
+
+  VectorXd z = VectorXd(n_z);
+  z(0) = meas_package.raw_measurements_(0);
+  z(1) = meas_package.raw_measurements_(1);
+
+  MatrixXd Tc = MatrixXd(n_x_, n_z);
+  VectorXd z_pred_ = VectorXd(n_z);
+
+  for (int i=0; i<2*n_aug_+1; i++){
+    Tc += weights_(i)*(Xsig_pred_.col(i) - x_)*(Zsig.col(i) - z_pred_).transpose();
+  }
+
+  //calculate Kalman gain K;
+  MatrixXd K = Tc * S.inverse();
+
+  //update state mean and covariance matrix
+  x_ += K * (z - z_pred_);
+  P_ -= K * S * K.transpose();
 }
