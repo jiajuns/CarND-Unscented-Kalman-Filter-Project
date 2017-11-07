@@ -72,11 +72,7 @@ UKF::UKF() {
   }
 
   //initialize covariance matrix
-  P_ << 1, 0, 0, 0, 0,
-        0, 1, 0, 0, 0,
-        0, 0, 1, 0, 0,
-        0, 0, 0, 1, 0,
-        0, 0, 0, 0, 1;
+  P_ = MatrixXd::Identity(5,5);
 
   Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
 
@@ -101,8 +97,7 @@ UKF::~UKF() {}
  * normalise angle to range [-pi, pi]
  */
 void UKF::NormAng(double *ang) {
-  while (*ang > M_PI) *ang -= 2. * M_PI;
-  while (*ang < -M_PI) *ang += 2. * M_PI;
+  *ang = atan2(sin(*ang), cos(*ang));
 }
 
 /**
@@ -127,7 +122,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       float vx = rho_dot * cos(phi);
       float vy = rho_dot * sin(phi);
       float v  = rho_dot;
-      x_ << rho * cos(phi), rho * sin(phi), v, rho_dot * cos(phi), rho_dot * sin(phi);
+      x_ << rho * cos(phi), rho * sin(phi), v, 0, 0;
     }
     else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
       /**
@@ -261,11 +256,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   MatrixXd S = MatrixXd(n_z, n_z);
   S.fill(0.0);
 
-  MatrixXd R = MatrixXd(3, 3);
-  R << pow(std_radr_, 2), 0, 0,
-       0, pow(std_radphi_, 2), 0,
-       0, 0, pow(std_radrd_, 2);
-
   //create matrix for sigma points in measurement space
   MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
 
@@ -296,12 +286,9 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
       S += weights_(i)*z_diff*z_diff.transpose();
   }
-  S += R;
+  S += R_radar_;
 
-  VectorXd z = VectorXd(n_z);
-  z(0) = meas_package.raw_measurements_(0);
-  z(1) = meas_package.raw_measurements_(1);
-  z(2) = meas_package.raw_measurements_(2);
+  const VectorXd& z = meas_package.raw_measurements_;
 
   MatrixXd Tc = MatrixXd(n_x_, n_z);
   Tc.fill(0);
@@ -347,10 +334,6 @@ void UKF::UpdateLidar(MeasurementPackage meas_package){
   int n_z = 2;
   MatrixXd S = MatrixXd(n_z, n_z);
 
-  MatrixXd R = MatrixXd(n_z, n_z);
-  R << pow(std_laspx_, 2), 0,
-       0, pow(std_laspy_, 2);
-
   //create matrix for sigma points in measurement space
   MatrixXd Zsig = Xsig_pred_.block(0, 0, n_z, 2*n_aug_+1);
 
@@ -368,7 +351,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package){
 
     S += weights_(i)*z_diff*z_diff.transpose();
   }
-  S += R;
+  S += R_lidar_;
 
   VectorXd z = VectorXd(n_z);
   z(0) = meas_package.raw_measurements_(0);
